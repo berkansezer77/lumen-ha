@@ -184,6 +184,42 @@ if rts.get("on_by_us"):
 if rts.get("paused_until") != 12345.0:
     sorun.append("yetkisiz istek paused_until'i sifirladi")
 
+print("5b) GRUP TANIMLI ODADA DA CALISMALI")
+# Gruplar entity kimligi degil, {key,name,lights} sozlukleri. Listeye
+# oldugu gibi eklemek "unhashable type: dict" ile patliyordu: grubu olan
+# her odada ev halkinin servisi kirikti.
+CFG["rooms"]["oda"]["groups"] = [
+    {"key": "ust", "name": "Ust", "lights": ["light.b", "light.c"]},
+    {"key": "bos", "name": "Bos"},
+]
+HASS.states.set("light.b", "off", 60)
+HASS.states.set("light.c", "off", 60)
+try:
+    isiklar = eng.room_lights("oda")
+    print("   odanin isiklari:", isiklar)
+    if "light.b" not in isiklar or "light.c" not in isiklar:
+        sorun.append("grup icindeki isiklar sayilmadi: %s" % isiklar)
+except Exception as err:
+    sorun.append("grup tanimli odada room_lights patladi: %s: %s"
+                 % (type(err).__name__, err))
+    isiklar = []
+
+HASS.auth.user = Kullanici(izinli=False)
+sonuc = calistir(eng.async_action(
+    {"action": "room_on", "room": "oda"}, user_id="yabanci"))
+print("   yetkisiz:", sonuc)
+if (sonuc or {}).get("error") != "unauthorized":
+    sorun.append("grup varken yetkisiz istek duzgun reddedilmedi: %s" % sonuc)
+
+HASS.auth.user = Kullanici(izinli=True)
+HASS.services.calls.clear()
+sonuc = calistir(eng.async_action(
+    {"action": "room_on", "room": "oda"}, user_id="komsu"))
+print("   yetkili :", sonuc, "| komut:", len(HASS.services.calls))
+if not (sonuc or {}).get("ok"):
+    sorun.append("grup varken yetkili kullanici geri cevrildi: %s" % sonuc)
+CFG["rooms"]["oda"].pop("groups", None)
+
 print("6) YETKILI KULLANICI GECER")
 HASS.auth.user = Kullanici(izinli=True)
 HASS.services.calls.clear()

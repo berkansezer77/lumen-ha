@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.4 — rooms with light groups
+
+A regression from 1.0.3: the permission check listed a room's switchable
+things by adding `groups` to `lights` — but a group is not an entity id, it is
+`{key, name, lights}`. In a room with any group, the household-facing
+`lumen_ha.room` service raised `unhashable type: dict` instead of switching
+anything. The panel, administrators and sensor automations were unaffected,
+which is exactly why the tests missed it: every one of them used a room
+without groups.
+
+Group lights are now flattened, and the service test runs against a room that
+has groups — for an authorised and an unauthorised user both.
+
 ## 1.0.3 — permission asked before anything moves
 
 **A refused command no longer leaves a trace.** Home Assistant already enforces

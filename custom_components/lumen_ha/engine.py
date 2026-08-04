@@ -2027,9 +2027,19 @@ class LumenEngine:
                    for eid in self.room_lights(rid))
 
     def room_lights(self, rid: str) -> list[str]:
-        """Odanın gerçekten çevrilebilen şeyleri (ışık ve anahtarlar)."""
+        """Odanın gerçekten çevrilebilen şeyleri (ışık ve anahtarlar).
+
+        Gruplar entity kimliği değil, {key, name, lights} sözlükleri — listeye
+        olduğu gibi eklemek "unhashable type: dict" ile patlıyordu ve grubu
+        olan her odada ev halkının servisi çalışmaz hâle geliyordu. İçlerindeki
+        ışıklar düzleştirilir.
+        """
         room = self.room(rid)
-        out = list(room.get("lights") or []) + list(room.get("groups") or [])
+        out = [e for e in (room.get("lights") or []) if isinstance(e, str)]
+        for grp in room.get("groups") or []:
+            if not isinstance(grp, dict):
+                continue
+            out.extend(e for e in (grp.get("lights") or []) if isinstance(e, str))
         return [e for e in dict.fromkeys(out) if self._is_light(e)]
 
     def room_entities(self, rid: str) -> list[str]:
