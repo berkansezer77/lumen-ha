@@ -20,6 +20,7 @@ from collections import deque
 from datetime import timedelta
 
 from homeassistant.const import SUN_EVENT_SUNRISE, SUN_EVENT_SUNSET
+from homeassistant.auth.permissions.const import POLICY_CONTROL
 from homeassistant.core import Context, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
@@ -2000,6 +2001,37 @@ class LumenEngine:
             self.down.pop(eid, None)
             self._told.discard(eid)
 
+    async def async_user_may(self, user_id: str | None, rid: str) -> bool:
+        """Bu kullanıcı bu odanın ışıklarını çevirebilir mi?
+
+        Home Assistant, kimliği taşınan bir servis çağrısında entity iznini
+        kendisi uyguluyor — ama bunu komut gönderildikten SONRA yapıyor ve
+        reddi bize bildirmiyor. Biz o ana kadar "bu odayı ben açtım" diye
+        not almış oluyorduk; sonraki otomatik tur da o nota bakıp ışığı
+        söndürebiliyordu. Bu yüzden izni komuttan önce burada soruyoruz.
+        """
+        if not user_id:
+            return True                       # sensörden gelen: bizim işimiz
+        try:
+            user = await self.hass.auth.async_get_user(user_id)
+        except Exception:                     # noqa: BLE001
+            return False
+        if user is None:
+            return False
+        if getattr(user, "is_admin", False):
+            return True
+        izin = getattr(user, "permissions", None)
+        if izin is None:
+            return False
+        return all(izin.check_entity(eid, POLICY_CONTROL)
+                   for eid in self.room_lights(rid))
+
+    def room_lights(self, rid: str) -> list[str]:
+        """Odanın gerçekten çevrilebilen şeyleri (ışık ve anahtarlar)."""
+        room = self.room(rid)
+        out = list(room.get("lights") or []) + list(room.get("groups") or [])
+        return [e for e in dict.fromkeys(out) if self._is_light(e)]
+
     def room_entities(self, rid: str) -> list[str]:
         """Everything LUMEN needs from this room, in one list."""
         room = self.room(rid)
@@ -2171,6 +2203,12 @@ class LumenEngine:
         if action in ("room_on", "room_off"):
             if rid not in self.rooms():
                 return {"ok": False, "error": "unknown room"}
+            # Yetki, motorun iç durumuna dokunmadan önce sorulur.
+            if not await self.async_user_may(user_id, rid):
+                self.log(rid, "warn", self.tr(
+                    f"{self.room_name(rid)}: yetkisiz istek geri çevrildi",
+                    f"{self.room_name(rid)}: request refused, no permission"))
+                return {"ok": False, "error": "unauthorized"}
             # Zincirin tamamı senkron; araya await girmediği için bu alan
             # başka bir çağrıya karışamaz.
             self._as_user = user_id

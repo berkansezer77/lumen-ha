@@ -143,7 +143,76 @@ print("   cevap:", sonuc)
 if (sonuc or {}).get("ok"):
     sorun.append("motor bilinmeyen eylemi kabul etti")
 
-# ── 3) yedi saniyelik tekrar kimligi tasiyor mu ────────────────────────
+# ── yetki: komuttan ONCE sorulmali ─────────────────────────────────────
+print("5) YETKISIZ KULLANICI MOTORUN IC DURUMUNU DEGISTIREMEMELI")
+
+
+class Izin:
+    def __init__(self, izinli): self.izinli = izinli
+    def check_entity(self, eid, policy): return self.izinli
+
+
+class Kullanici:
+    def __init__(self, izinli, admin=False):
+        self.is_admin = admin
+        self.permissions = Izin(izinli)
+
+
+class Auth:
+    def __init__(self): self.user = None
+    async def async_get_user(self, uid): return self.user
+
+
+HASS.auth = Auth()
+HASS.auth.user = Kullanici(izinli=False)
+HASS.services.calls.clear()
+rts = eng._state("oda")
+rts["on_by_us"] = False
+rts["paused_until"] = 12345.0
+
+sonuc = calistir(eng.async_action(
+    {"action": "room_on", "room": "oda"}, user_id="yabanci"))
+print("   cevap:", sonuc)
+print("   komut gitti mi:", bool(HASS.services.calls))
+print("   on_by_us:", rts.get("on_by_us"), "| paused_until:", rts.get("paused_until"))
+if (sonuc or {}).get("ok"):
+    sorun.append("yetkisiz istek kabul edildi")
+if HASS.services.calls:
+    sorun.append("yetkisiz istekte isik komutu gonderildi")
+if rts.get("on_by_us"):
+    sorun.append("yetkisiz istek on_by_us'u degistirdi")
+if rts.get("paused_until") != 12345.0:
+    sorun.append("yetkisiz istek paused_until'i sifirladi")
+
+print("6) YETKILI KULLANICI GECER")
+HASS.auth.user = Kullanici(izinli=True)
+HASS.services.calls.clear()
+sonuc = calistir(eng.async_action(
+    {"action": "room_on", "room": "oda"}, user_id="komsu"))
+print("   cevap:", sonuc, "| komut:", len(HASS.services.calls))
+if not (sonuc or {}).get("ok"):
+    sorun.append("yetkili kullanici geri cevrildi: %s" % sonuc)
+if not HASS.services.calls:
+    sorun.append("yetkili kullanicida komut gitmedi")
+
+print("7) YONETICI HER ZAMAN GECER")
+HASS.auth.user = Kullanici(izinli=False, admin=True)
+HASS.services.calls.clear()
+sonuc = calistir(eng.async_action(
+    {"action": "room_on", "room": "oda"}, user_id="yonetici"))
+print("   cevap:", sonuc)
+if not (sonuc or {}).get("ok"):
+    sorun.append("yonetici geri cevrildi")
+
+print("8) KULLANICI YOKSA (sensor/otomasyon) SORULMAZ")
+HASS.auth.user = None
+HASS.services.calls.clear()
+sonuc = calistir(eng.async_action({"action": "room_on", "room": "oda"}))
+print("   cevap:", sonuc, "| komut:", len(HASS.services.calls))
+if not (sonuc or {}).get("ok"):
+    sorun.append("kimliksiz cagri engellendi (otomasyonlar kirilir)")
+
+# ── yedi saniyelik tekrar kimligi tasiyor mu ───────────────────────────
 print("5) YEDI SANIYELIK TEKRAR KOMUTU VEREN KULLANICIYI TASIYOR MU")
 eng._state("oda")["locked_until"] = 0.0
 HASS.services.calls.clear()

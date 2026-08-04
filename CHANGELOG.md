@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.3 — permission asked before anything moves
+
+**A refused command no longer leaves a trace.** Home Assistant already enforces
+entity permissions on a call that carries the caller's identity — but it does
+so *after* the call is on its way, and it does not tell us. LUMEN had already
+noted "this room is mine" by then, and a later automatic sweep could act on
+that note. The permission is now asked **before** the engine touches anything:
+a user without control of a room's lights gets `unauthorized`, no command is
+sent, and no internal state changes. Administrators and calls with no user
+behind them (sensors, automations, scripts) are unaffected.
+
+**A malformed configuration answers 400, not 500.** The guard walked
+`rooms[].slots` before checking it was an object, and accepted a `scene_art`
+that was a list or an `ignored` that was a number — which the engine then
+choked on. Every top-level structure the engine assumes is now checked, and the
+answer is a clear message rather than "the server got itself in trouble".
+
 ## 1.0.2 — a condition instead of a timer
 
 **The timed room lock is gone.** "Leave this room alone for three hours" asked

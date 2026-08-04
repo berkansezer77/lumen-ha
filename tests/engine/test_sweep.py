@@ -31,6 +31,10 @@ def _passthrough(*a, **k): return _Reg()
 
 mod("homeassistant")
 mod("homeassistant.const", SUN_EVENT_SUNRISE="sunrise", SUN_EVENT_SUNSET="sunset")
+# HA'nin izin sabiti: motor entity yetkisini bununla soruyor.
+mod("homeassistant.auth")
+mod("homeassistant.auth.permissions")
+mod("homeassistant.auth.permissions.const", POLICY_CONTROL="control")
 
 
 _SAYAC = [0]

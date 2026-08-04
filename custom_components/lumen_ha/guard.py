@@ -234,8 +234,11 @@ def clean(cfg: Any, raw_len: int | None = None) -> tuple[dict, list[str]]:
                 if len(liste) > MAX_LIST:
                     raise ConfigRejected(
                         f"{rid}.{alan} çok uzun ({len(liste)}, sınır {MAX_LIST})")
+            slots = room.get("slots")
+            if slots is not None and not isinstance(slots, dict):
+                raise ConfigRejected(f"{rid}.slots bir nesne olmalı")
             # Engel koşulları: liste, içinde nesne, makul sayıda.
-            for slot in (room.get("slots") or {}).values():
+            for slot in (slots or {}).values():
                 if not isinstance(slot, dict):
                     continue
                 engel = slot.get("block")
@@ -250,9 +253,6 @@ def clean(cfg: Any, raw_len: int | None = None) -> tuple[dict, list[str]]:
                     if not isinstance(kosul, dict):
                         raise ConfigRejected(f"{rid}: engel koşulu bir nesne olmalı")
 
-            slots = room.get("slots")
-            if slots is not None and not isinstance(slots, dict):
-                raise ConfigRejected(f"{rid}.slots bir nesne olmalı")
             if isinstance(slots, dict) and len(slots) > MAX_SLOTS:
                 raise ConfigRejected(
                     f"{rid}: çok fazla zaman dilimi ({len(slots)}, sınır {MAX_SLOTS})")
@@ -271,6 +271,19 @@ def clean(cfg: Any, raw_len: int | None = None) -> tuple[dict, list[str]]:
             for kat in floors:
                 if not isinstance(kat, dict):
                     raise ConfigRejected("layout.floors içinde nesne olmalı")
+
+    # Motorun sözlük ya da liste beklediği üst alanlar: tipi yanlışsa
+    # entegrasyon açılışta düşer, ve bu 400 değil 500 demektir.
+    for alan, tur, ad in (("scene_art", dict, "nesne"),
+                          ("ignored", list, "liste"),
+                          ("skip_areas", list, "liste"),
+                          ("overrides", dict, "nesne"),
+                          ("photo", dict, "nesne"),
+                          ("energy", dict, "nesne"),
+                          ("notify", dict, "nesne")):
+        deger = cfg.get(alan)
+        if deger is not None and not isinstance(deger, tur):
+            raise ConfigRejected(f"{alan} bir {ad} olmalı")
 
     modes = cfg.get("modes")
     if modes is not None:
