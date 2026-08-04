@@ -1154,6 +1154,10 @@ class LumenEngine:
         if not lights:
             return
         again = dict(decision)
+        # Komutu kim verdiyse, yedi saniye sonraki tekrarı da o veriyor.
+        # Kimliği burada yakalamazsak tekrar sistem çağrısı gibi gider ve
+        # ilk komutu reddedilmiş bir kullanıcı ikincisiyle geçer.
+        isteyen = self._as_user
 
         def check() -> None:
             missing = [e for e in lights if not self._is_on(e)]
@@ -1164,7 +1168,12 @@ class LumenEngine:
                 f"{self.room_name(rid)}: {names} komuta uymadı — bir kez daha denendi",
                 f"{self.room_name(rid)}: {names} did not answer — asked once more"))
             again["lights"] = missing
-            self._switch_on(rid, again, retry=False)
+            onceki = self._as_user
+            self._as_user = isteyen
+            try:
+                self._switch_on(rid, again, retry=False)
+            finally:
+                self._as_user = onceki
 
         self._later(rid, "verify", 7.0, check)
 

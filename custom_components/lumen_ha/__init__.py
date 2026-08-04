@@ -20,6 +20,7 @@ from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -54,7 +55,13 @@ def _looks_like_image(blob: bytes) -> bool:
         return True
     if blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
         return True
-    return blob[4:8] == b"ftyp"                    # avif and friends
+    # AVIF/HEIC are ISO-BMFF files, and so are MP4 and QuickTime: "has ftyp"
+    # was letting a video through under an .avif name. The brand that follows
+    # says which it is.
+    if blob[4:8] == b"ftyp":
+        return blob[8:12] in (b"avif", b"avis", b"heic", b"heix", b"heim",
+                              b"heis", b"hevc", b"mif1", b"msf1")
+    return False
 
 
 def _folder_bytes(folder: str) -> int:
@@ -553,18 +560,33 @@ def _register_services(hass: HomeAssistant, engine: LumenEngine) -> None:
     async def _set_mode(call: ServiceCall) -> None:
         await engine.async_set_mode(call.data["mode"])
 
+    def _sonucu_denetle(sonuc: dict, ne: str) -> None:
+        """Motor 'yapamadım' diyorsa çağıran bunu bilsin.
+
+        Eskiden cevaba bakılmıyordu: `lock_room` motorun tanımadığı bir
+        eylem gönderiyor, servis yine de başarılı görünüyordu.
+        """
+        if not (sonuc or {}).get("ok"):
+            hata = (sonuc or {}).get("error") or "bilinmeyen hata"
+            # Kullanicinin verdigi bir sey yanlissa (olmayan oda gibi) bu bir
+            # sunucu hatasi degil: ServiceValidationError 500 yerine temiz
+            # bir 400 dondurur ve mesaji kullaniciya gosterir.
+            raise ServiceValidationError(f"LUMEN {ne}: {hata}")
+
     async def _room(call: ServiceCall) -> None:
-        await engine.async_action({
+        _sonucu_denetle(await engine.async_action({
             "action": "room_on" if call.data["state"] == "on" else "room_off",
             "room": call.data["room"],
-        }, user_id=call.context.user_id)
+        }, user_id=call.context.user_id), "room")
 
     async def _lock(call: ServiceCall) -> None:
-        await engine.async_action({
-            "action": "lock",
+        # Motorun tanıdığı ad "room_lock"; "lock" gönderiliyordu ve servis
+        # hiçbir şey yapmadan başarılı görünüyordu.
+        _sonucu_denetle(await engine.async_action({
+            "action": "room_lock",
             "room": call.data["room"],
             "hours": call.data.get("hours", 2),
-        }, user_id=call.context.user_id)
+        }, user_id=call.context.user_id), "lock_room")
 
     async def _autofill(_call: ServiceCall) -> None:
         await engine.async_autofill()

@@ -26,11 +26,33 @@ MAX_ROOMS = 200
 MAX_LIST = 500          # bir odanın tetik/tutucu/ışık listesi
 MAX_SLOTS = 24          # oda başına zaman dilimi
 MAX_MODES = 50
+MAX_FLOORS = 20
 MAX_TEXT = 2000         # tek bir metin alanı
 MAX_KEY = 128           # oda kimliği, mod anahtarı
 
+# Sayı olmak ZORUNDA olan alanlar: metin gelirse varsayılana çekilir.
+# ("bozuk" yazan bir mode_until, her turda hata veren bir motor demek.)
+NUMBERS_ONLY = {
+    "cols": 6, "rows_n": 3, "x": 0, "y": 0, "w": 1, "h": 1,
+    "mode_until": 0, "expire_h": 0, "watt": 0, "price": 0, "after_min": 0,
+}
+
 # alan: (en az, en çok)
 RANGES = {
+    # Plan ızgarası ve oda geometrisi: paneldeki çizim döngüleri bunlara
+    # bakıyor. Bir milyar sütun, tarayıcıyı kilitleyen bir döngü demek.
+    "cols": (1, 64),
+    "rows_n": (1, 64),
+    "x": (0, 512),
+    "y": (0, 512),
+    "w": (1, 64),
+    "h": (1, 64),
+    # Mod bitişi bir zaman damgası; enerji sayfası kWh ve para hesaplıyor.
+    "mode_until": (0, 4102444800),      # 2100'e kadar
+    "expire_h": (0, 8760),
+    "watt": (0, 100000),
+    "price": (0, 1000),
+    "after_min": (0, 10080),
     "bri": (0, 100),
     "kelvin": (1000, 10000),
     "lux_max": (0, 200000),
@@ -139,7 +161,19 @@ def _number(key: str, value: Any, notes: list[str], nerede: str) -> Any:
     try:
         sayi = float(value)
     except (TypeError, ValueError):
+        # Sayı olması gereken bir alana metin gelmiş: varsayılana çek.
+        if key in NUMBERS_ONLY:
+            notes.append(f"{nerede}.{key}: {value!r} sayı değil → "
+                         f"{NUMBERS_ONLY[key]}")
+            return NUMBERS_ONLY[key]
         return value
+    if sayi != sayi or sayi in (float("inf"), float("-inf")):
+        # NaN ve sonsuz: Python'un json'u ikisini de kabul ediyor, ama
+        # karşılaştırmaların hepsi False döndüğü için motoru sessizce
+        # yanlış karar verdirirler.
+        yedek = NUMBERS_ONLY.get(key, RANGES[key][0])
+        notes.append(f"{nerede}.{key}: sayı değil (NaN/∞) → {yedek}")
+        return yedek
     alt, ust = RANGES[key]
     if sayi < alt or sayi > ust:
         kirpik = min(max(sayi, alt), ust)
@@ -149,13 +183,22 @@ def _number(key: str, value: Any, notes: list[str], nerede: str) -> Any:
     return value
 
 
+def _finite(value: Any, notes: list[str], nerede: str) -> Any:
+    """NaN ve sonsuz, nerede olursa olsun, dosyada kalmasın."""
+    if isinstance(value, float) and (value != value or value in (
+            float("inf"), float("-inf"))):
+        notes.append(f"{nerede}: NaN/∞ → 0")
+        return 0
+    return value
+
+
 def _walk(node: Any, notes: list[str], nerede: str = "") -> Any:
     if isinstance(node, dict):
         return {k: _walk(_number(k, v, notes, nerede), notes, f"{nerede}.{k}" if nerede else str(k))
                 for k, v in node.items()}
     if isinstance(node, list):
         return [_walk(v, notes, nerede) for v in node]
-    return _text(node, notes, nerede)
+    return _text(_finite(node, notes, nerede), notes, nerede)
 
 
 def clean(cfg: Any, raw_len: int | None = None) -> tuple[dict, list[str]]:
@@ -196,6 +239,21 @@ def clean(cfg: Any, raw_len: int | None = None) -> tuple[dict, list[str]]:
             if isinstance(slots, dict) and len(slots) > MAX_SLOTS:
                 raise ConfigRejected(
                     f"{rid}: çok fazla zaman dilimi ({len(slots)}, sınır {MAX_SLOTS})")
+
+    layout = cfg.get("layout")
+    if layout is not None and not isinstance(layout, dict):
+        raise ConfigRejected("layout bir nesne olmalı")
+    if isinstance(layout, dict):
+        floors = layout.get("floors")
+        if floors is not None and not isinstance(floors, list):
+            raise ConfigRejected("layout.floors bir liste olmalı")
+        if isinstance(floors, list):
+            if len(floors) > MAX_FLOORS:
+                raise ConfigRejected(
+                    f"çok fazla kat ({len(floors)}, sınır {MAX_FLOORS})")
+            for kat in floors:
+                if not isinstance(kat, dict):
+                    raise ConfigRejected("layout.floors içinde nesne olmalı")
 
     modes = cfg.get("modes")
     if modes is not None:

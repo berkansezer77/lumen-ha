@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.1 — the second audit
+
+A security review of 1.0.0 found four real defects. All are fixed.
+
+- **`lock_room` did nothing.** The service sent an action name the engine did
+  not recognise, and reported success anyway. It now sends the right one — and
+  every service checks what the engine answered instead of assuming.
+- **The seven-second retry lost the caller.** When a light did not answer, the
+  retry went out as a system call. A user whose first command was refused for
+  lack of permission would have been let through by the second. The identity is
+  now carried into the deferred work.
+- **The configuration guard had holes.** `NaN`, infinity, a billion-column
+  floor grid, room geometry and non-numeric values in numeric fields all passed
+  through. A billion columns is a browser that stops responding.
+- **A video could pass as an image.** "Has an `ftyp` box" is true of MP4 and
+  QuickTime as well as AVIF; the brand is now checked.
+
+Also: diagnostics use Home Assistant's own `async_redact_data` rather than a
+hand-rolled mask, and the test harness no longer swallows "coroutine was never
+awaited" warnings — those would have hidden a real one.
+
+Three new tests, aimed at the class of bug rather than the instance: the
+services' action names must be ones the engine handles, the retry must carry
+the caller, and the guard must object to the fields it previously ignored.
+
 ## 1.0.0 — first release
 
 The first public version. Everything below is what it does on day one; there is

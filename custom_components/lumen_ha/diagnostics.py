@@ -16,6 +16,7 @@ import copy
 import time
 from typing import Any
 
+from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
@@ -24,21 +25,29 @@ from .const import DOMAIN
 from .engine import LumenEngine
 
 # Kept out of the file: not secrets exactly, but nobody else's business.
-REDACT_ROOM = ("image",)
-REDACT_TOP = ("notify",)
+# `async_redact_data` walks the whole document, so one list covers the
+# notification target, uploaded photo paths and anything that looks like a
+# credential or a location wherever it turns up.
+REDACT_ALL = {
+    "notify", "image", "images", "photo",
+    "latitude", "longitude", "elevation",
+    "api_key", "token", "password", "webhook_id",
+}
 KEEP_EVENTS = 100
 
 
 def _clean_config(cfg: dict) -> dict:
-    """The configuration with the personal bits taken out."""
-    out = copy.deepcopy(cfg)
-    for key in REDACT_TOP:
-        if key in out:
-            out[key] = "**maskelendi**"
-    for room in (out.get("rooms") or {}).values():
-        for key in REDACT_ROOM:
-            if room.get(key):
-                room[key] = "**maskelendi**"
+    """The configuration with the personal bits taken out.
+
+    Home Assistant's own `async_redact_data` does the masking, rather than a
+    hand-rolled loop: one fewer place to get it wrong, and it recurses.
+
+    What deliberately stays: entity ids, room names, and the diary. A
+    diagnostics file without them cannot answer the only question it is for —
+    which sensor said what, and what the engine made of it. The panel says so
+    in plain words before you download it, so nobody sends one unawares.
+    """
+    out = async_redact_data(copy.deepcopy(cfg), REDACT_ALL)
     art = out.get("scene_art")
     if isinstance(art, dict):
         out["scene_art"] = {k: bool(v) for k, v in art.items()}

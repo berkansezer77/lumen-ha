@@ -91,6 +91,36 @@ print("   uzunluk:", len(temiz["rooms"]["a"]["icon"]), "| not:", bool(notlar))
 if len(temiz["rooms"]["a"]["icon"]) != g.MAX_TEXT:
     sorun.append("uzun metin kirpilmadi")
 
+print("5b) DENETIMDE OLMAYAN ALANLAR (ikinci denetimin bulgusu)")
+# NaN, sonsuz, milyarlik izgara ve sayi yerine metin: hepsi suzgecten
+# gecerdi. Panelin cizim dongusu cols'a bakiyor; milyar = kilitli tarayici.
+import json as _json
+for ad, cfg, beklenen in [
+    ("NaN", _json.loads('{"rooms":{},"energy":{"watt":NaN}}'), "watt"),
+    ("sonsuz", _json.loads('{"rooms":{},"energy":{"price":Infinity}}'), "price"),
+    ("izgara", {"rooms": {}, "layout": {"floors": [{"cols": 10**9, "rows_n": 10**9}]}}, "cols"),
+    ("oda olcusu", {"rooms": {"a": {"x": 10**9, "y": -5, "w": 99999, "h": 0}}}, "x"),
+    ("sayi yerine metin", {"rooms": {}, "mode_until": "bozuk"}, "mode_until"),
+]:
+    t, n = g.clean(_json.loads(_json.dumps(cfg)) if ad not in ("NaN", "sonsuz") else cfg)
+    print("   %-18s -> %s" % (ad, n or "NOT YOK"))
+    if not n:
+        sorun.append(ad + " suzgecten notsuz gecti")
+    elif not any(beklenen in x for x in n):
+        sorun.append(ad + " yanlis alan bildirildi: %s" % n)
+
+print("5c) Kat listesi bozuksa reddedilir")
+for ad, cfg in [("layout nesne degil", {"rooms": {}, "layout": []}),
+                ("floors liste degil", {"rooms": {}, "layout": {"floors": {}}}),
+                ("kat nesne degil", {"rooms": {}, "layout": {"floors": ["x"]}}),
+                ("cok fazla kat", {"rooms": {}, "layout": {"floors": [{}] * 50}})]:
+    try:
+        g.clean(cfg)
+        sorun.append("bozuk layout kabul edildi: " + ad)
+        print("   x", ad, "GECTI")
+    except g.ConfigRejected as err:
+        print("   ", ad, "-> reddedildi:", str(err)[:50])
+
 print("6) Bilmedigi alanlara dokunmaz (ileride eklenecek her sey)")
 cfg = {"rooms": {"a": {"yepyeni_alan": {"ic": [1, 2, 3]}}}, "gelecek": True}
 temiz, _ = g.clean(cfg)

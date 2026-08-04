@@ -88,6 +88,22 @@ for ad, blob in [("bos", b""), ("yarim png", png(100, 100)[:12]),
     except Exception as err:
         sorun.append(f"{ad} patladi: {err}")
 
+print("5b) ISO-BMFF: video gorsel diye gecmemeli")
+# "ftyp var" demek gorsel demek degil: MP4 ve QuickTime de ISO-BMFF.
+import io as _io
+_init = _io.open(Z + "/lumen_ha/__init__.py", encoding="utf-8").read()
+_ns = {}
+exec(_init[_init.index("def _looks_like_image"):_init.index("def _folder_bytes")], _ns)
+_bak = _ns["_looks_like_image"]
+_bas = bytes([0, 0, 0, 0x20]) + b"ftyp"
+for ad, marka, bekle in [("mp4", b"isom", False), ("quicktime", b"qt  ", False),
+                         ("avif", b"avif", True), ("heic", b"heic", True)]:
+    blob = _bas + marka + bytes(20)
+    var = _bak(blob)
+    print("   %-10s -> %s" % (ad, "kabul" if var else "red"))
+    if var != bekle:
+        sorun.append(ad + (" reddedilmeliydi" if var else " kabul edilmeliydi"))
+
 print("6) Klasor kotasi makul mu")
 print("   sinir:", g.MAX_FOLDER // (1024 * 1024), "MB")
 if not (50 * 1024 * 1024 <= g.MAX_FOLDER <= 2 * 1024 * 1024 * 1024):

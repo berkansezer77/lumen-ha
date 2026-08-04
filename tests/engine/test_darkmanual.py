@@ -41,7 +41,9 @@ class Services:
 
 class Hass:
     def __init__(self): self.states = States(); self.services = Services(); self.data = {}
-    def async_create_task(self, c): pass
+    def async_create_task(self, c):
+        try: c.close()
+        except Exception: pass
 
 
 HASS = Hass()
