@@ -1,0 +1,43 @@
+set_mode:
+  # Modlar panelde tanimlanir; kurulumla gelen ikisi normal ve alone.
+  # (Ornekte olmayan bir mod yazmak, servisi deneyen herkesi yaniltiyordu.)
+  fields:
+    mode:
+      required: true
+      example: normal
+      selector:
+        text:
+
+room:
+  fields:
+    room:
+      required: true
+      example: salon
+      selector:
+        text:
+    state:
+      required: true
+      example: "on"
+      selector:
+        select:
+          options:
+            - "on"
+            - "off"
+
+lock_room:
+  fields:
+    room:
+      required: true
+      example: salon
+      selector:
+        text:
+    hours:
+      example: 2
+      selector:
+        number:
+          min: 0
+          max: 24
+          step: 0.5
+          mode: box
+
+autofill:

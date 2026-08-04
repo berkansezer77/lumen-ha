@@ -1,0 +1,11 @@
+{
+  "name": "lumen-ha-tests",
+  "private": true,
+  "description": "Panel tests for the Lumen HA integration (the integration itself ships no JavaScript build step).",
+  "scripts": {
+    "test": "node tests/run-panel.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}

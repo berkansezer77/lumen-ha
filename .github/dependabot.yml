@@ -1,0 +1,20 @@
+# Action'lar tam commit numarasina sabitlendi (bkz. workflows/validate.yml).
+# Sabitlemenin bedeli, yukseltmelerin elde kalmasi; Dependabot o isi ustlenir
+# ve her yukseltmeyi bir PR olarak getirir — yani degisiklik gorunur olur.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+
+  # Panel testlerinin tek bagimliligi (jsdom). Entegrasyonun kendisinin
+  # calisma zamaninda hicbir npm/pip bagimliligi yok.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "test"

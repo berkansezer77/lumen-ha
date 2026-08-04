@@ -1,0 +1,69 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LUMEN",
+        "description": "Automatic room lighting. Everything else is configured in the LUMEN panel in the sidebar."
+      }
+    },
+    "abort": {
+      "already_configured": "LUMEN is already set up."
+    }
+  },
+  "entity": {
+    "select": {
+      "mode": {
+        "name": "Mode"
+      }
+    },
+    "switch": {
+      "engine": {
+        "name": "Engine"
+      }
+    }
+  },
+  "services": {
+    "set_mode": {
+      "name": "Set mode",
+      "description": "Switch the house lighting mode.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Mode key, e.g. normal, alone, guest, sleep."
+        }
+      }
+    },
+    "room": {
+      "name": "Room light",
+      "description": "Switch a room's lights on or off through LUMEN.",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "Home Assistant area id."
+        },
+        "state": {
+          "name": "State",
+          "description": "on or off."
+        }
+      }
+    },
+    "lock_room": {
+      "name": "Lock room",
+      "description": "Leave a room alone for a while.",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "Home Assistant area id."
+        },
+        "hours": {
+          "name": "Hours",
+          "description": "How long to keep hands off. 0 unlocks."
+        }
+      }
+    },
+    "autofill": {
+      "name": "Fill from areas",
+      "description": "Create rooms from the Home Assistant areas and assign their lights and sensors."
+    }
+  }
+}

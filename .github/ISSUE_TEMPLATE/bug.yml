@@ -1,0 +1,61 @@
+name: Something did not work
+description: A light that stayed off, a room that will not go dark, anything else
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time. The one thing that answers most reports
+        is the diagnostics file — it carries every room's live verdict, the
+        state of every sensor and light, and the last hundred decisions.
+
+        **Settings → Devices & services → Lumen HA → ⋮ → Download diagnostics.**
+        Drag the file into this issue. If GitHub refuses the `.json`, zip it.
+
+  - type: input
+    id: version
+    attributes:
+      label: Lumen HA version
+      placeholder: "1.8.0 — Settings → Devices & services → Lumen HA"
+    validations:
+      required: true
+
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.7.2"
+    validations:
+      required: true
+
+  - type: input
+    id: room
+    attributes:
+      label: Which room
+      placeholder: "Bathroom"
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected instead
+      placeholder: |
+        I walked into the bathroom at about 21:40. The light came on and went
+        off again within a second. I expected it to stay on while I was there.
+    validations:
+      required: true
+
+  - type: textarea
+    id: devices
+    attributes:
+      label: The lights and sensors in that room
+      description: Brand and model help — some bulbs answer a slow fade oddly.
+      placeholder: |
+        Lights: 2 × Sonoff wall switch (Zigbee)
+        Sensors: Hue motion, Aqara FP2 presence
+
+  - type: checkboxes
+    id: diag
+    attributes:
+      label: Diagnostics
+      options:
+        - label: I have attached the diagnostics file to this issue
