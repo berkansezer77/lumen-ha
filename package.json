@@ -6,6 +6,6 @@
     "test": "node tests/run-panel.js"
   },
   "devDependencies": {
-    "jsdom": "^25.0.0"
+    "jsdom": "^30.0.1"
   }
 }
