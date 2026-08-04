@@ -126,12 +126,18 @@ texts = " | ".join(e.get("text") or "" for e in eng.events)
 for word in ("elle", "dışarıdan"):
     check("'%s' iddiasi yok" % word, word not in texts, texts[:80])
 
-print("6) oda kilidi hala calisir (panelden istenen, tahmin degil)")
+print("6) kosullu engel karanlik kuralini da durdurur")
+# Sureli kilidin yerini aldi: "su kadar dakika kapali kalsin" degil,
+# "su cihaz su durumdayken acma".
 eng = build(watch=True)
-eng._state("ofis")["locked_until"] = time.time() + 3600
-check("kilitliyken acmaz", not eng.decide("ofis")["on"], eng.decide("ofis")["reason"])
-eng._state("ofis")["locked_until"] = 0.0
-check("kilit kalkinca acar", eng.decide("ofis")["on"])
+dilim = eng.slot_now()
+oda = eng.config["rooms"]["ofis"]
+oda.setdefault("slots", {}).setdefault(dilim, {})["block"] = [
+    {"entity": "binary_sensor.mesgul", "state": "on"}]
+HASS.states.set("binary_sensor.mesgul", "on", 0)
+check("engel varken acmaz", not eng.decide("ofis")["on"], eng.decide("ofis")["reason"])
+HASS.states.set("binary_sensor.mesgul", "off", 0)
+check("engel kalkinca acar", eng.decide("ofis")["on"])
 
 print()
 print("HEPSI GECTI" if ok else "BASARISIZ")

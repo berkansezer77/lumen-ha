@@ -24,20 +24,4 @@ room:
             - "on"
             - "off"
 
-lock_room:
-  fields:
-    room:
-      required: true
-      example: salon
-      selector:
-        text:
-    hours:
-      example: 2
-      selector:
-        number:
-          min: 0
-          max: 24
-          step: 0.5
-          mode: box
-
 autofill:

@@ -7,7 +7,7 @@ FRONTEND_URL_BASE = "/lumen_ha_frontend"
 
 # Bump on every frontend change — the version lives in the FILE NAME (not ?v=)
 # so service workers / browser caches are forced to fetch the fresh file.
-FRONTEND_VERSION = "1.0.1"
+FRONTEND_VERSION = "1.0.2"
 
 STORE_VERSION = 1
 STORE_KEY = "lumen_config"
@@ -147,25 +147,25 @@ DEFAULT_SLOT_RULES = {
                 "off_enabled": True, "off_groups": [], "off_picks": [], "off_after": 180, "delay_on": 0, "dim_warn": 0, "off_on_enter": False,
                 "trigger_pick": [], "hold_pick": [],
                 "trigger_mode": "any", "hold_mode": "any", "and_window": 30,
-                     "watch_dark": False, "check_every": 30},
+                     "watch_dark": False, "check_every": 30, "block": []},
     "day": {"on": True, "lux_max": 20, "groups": [], "picks": [], "mode": "set",
             "bri": 80, "kelvin": 4000, "color": None, "scene": "",
             "off_enabled": True, "off_groups": [], "off_picks": [], "off_after": 300, "delay_on": 0, "dim_warn": 0, "off_on_enter": False,
                 "trigger_pick": [], "hold_pick": [],
                 "trigger_mode": "any", "hold_mode": "any", "and_window": 30,
-                     "watch_dark": False, "check_every": 30},
+                     "watch_dark": False, "check_every": 30, "block": []},
     "evening": {"on": True, "lux_max": 200, "groups": [], "picks": [], "mode": "set",
                 "bri": 70, "kelvin": 2700, "color": None, "scene": "",
                 "off_enabled": True, "off_groups": [], "off_picks": [], "off_after": 600, "delay_on": 0, "dim_warn": 0, "off_on_enter": False,
                 "trigger_pick": [], "hold_pick": [],
                 "trigger_mode": "any", "hold_mode": "any", "and_window": 30,
-                     "watch_dark": False, "check_every": 30},
+                     "watch_dark": False, "check_every": 30, "block": []},
     "night": {"on": True, "lux_max": 15, "groups": [], "picks": [], "mode": "set",
               "bri": 10, "kelvin": 2200, "color": None, "scene": "",
               "off_enabled": True, "off_groups": [], "off_picks": [], "off_after": 120, "delay_on": 0, "dim_warn": 0, "off_on_enter": False,
                 "trigger_pick": [], "hold_pick": [],
                 "trigger_mode": "any", "hold_mode": "any", "and_window": 30,
-                     "watch_dark": False, "check_every": 30},
+                     "watch_dark": False, "check_every": 30, "block": []},
 }
 
 DEFAULT_SLOT_RULE = {"on": True, "lux_max": 40, "groups": [], "picks": [], "mode": "set",
@@ -175,7 +175,7 @@ DEFAULT_SLOT_RULE = {"on": True, "lux_max": 40, "groups": [], "picks": [], "mode
                      "trigger_pick": [], "hold_pick": [],
                      "trigger_mode": "any", "hold_mode": "any",
                      "and_window": 30,
-                     "watch_dark": False, "check_every": 30}
+                     "watch_dark": False, "check_every": 30, "block": []}
 
 DEFAULT_ROOM = {
     "on": True,

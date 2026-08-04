@@ -410,7 +410,18 @@ const I18N = {
   groups_on: { en: "{n} groups", tr: "{n} grup" },
   no_presence: { en: "no presence", tr: "varlık yok" },
   presence_ok: { en: "presence ✓", tr: "varlık ✓" },
-  locked_for: { en: "locked {t}", tr: "kilitli {t}" },
+  blocked_by: { en: "held by {w}", tr: "{w} yüzden açılmıyor" },
+  block_h: { en: "Do not switch on while", tr: "Şunlar varken açma" },
+  block_s: {
+    en: "if one of these is in the state you name, this room is not switched "
+      + "on in this slot. It does not put a burning light out.",
+    tr: "bunlardan biri yazdığın durumdaysa bu dilimde oda açılmaz. "
+      + "Yanan bir ışığı söndürmez.",
+  },
+  block_add: { en: "Add a condition", tr: "Koşul ekle" },
+  block_ent: { en: "entity (light.tv_lamp)", tr: "entity (media_player.tv)" },
+  block_st: { en: "state (playing)", tr: "durum (playing)" },
+  block_none: { en: "nothing — the room decides on its own", tr: "yok — oda kendi karar verir" },
   fuse_for: { en: "fuse {t}", tr: "sigorta {t}" },
   tonight: { en: "Tonight", tr: "Bu Gece" },
   rooms_lit: { en: "Rooms lit", tr: "Oda açık" },
@@ -671,8 +682,6 @@ const I18N = {
     en: "how long it may burn in an empty room before it is worth a word",
     tr: "boş odada ne kadar yanarsa söylemeye değer",
   },
-  manual_off: { en: "Tidy up after me", tr: "Arkamdan topla" },
-  manual_off_s: { en: "also switch off what you turned on (3x later)", tr: "elle açtığını da söndür (3 kat sonra)" },
   transition: { en: "Fade", tr: "Sönerken yumuşat" },
   transition_s: {
     en: "Off by default, which is the plain switch-off Home Assistant sends. "
@@ -1483,6 +1492,11 @@ const CSS2 = `
  * Hafızadakiyle aynı figür, aynı dosya; yalnız canlı kart daha büyük olduğu
  * için figür de büyük. Oturan adamla birlikte odanın "burada biri var"
  * hâlini kuruyorlar. */
+.blocklist{display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
+.blockrow{display:flex;gap:6px;align-items:center;}
+.blockrow .nin{width:210px;}
+.blockrow .nin.mini{width:110px;}
+.blocknone{color:#8b7f8b;font-size:12.5px;}
 .rchip.gone,.mwalk.gone{display:none;}
 /* Parmak kartın tam kenarına değil yakınına dokunuyor; birkaç piksellik
  * görünmez bir pay, dokunuşun kaybolmasını önler. */
@@ -2676,6 +2690,50 @@ class LumenPanel extends HTMLElement {
     }
     parent.appendChild(sec);
     return sec;
+  }
+
+  /* "Şunlar varken açma" — entity ve durum elle yazılır.
+   *
+   * Elle, çünkü hangi cihazın hangi durumu taşıdığı markadan markaya
+   * değişiyor: bir televizyon "playing" der, bir başkası "on". Listeden
+   * seçtirmek, seçeneği olmayan cihazı dışarıda bırakırdı. */
+  _blockRow(card, rule) {
+    const row = this._row(card, this.T("block_h"), this.T("block_s"));
+    const kutu = el("div", "blocklist");
+    const liste = Array.isArray(rule.block) ? rule.block : (rule.block = []);
+
+    const ciz = () => {
+      kutu.innerHTML = "";
+      if (!liste.length) {
+        kutu.appendChild(el("div", "blocknone", esc(this.T("block_none"))));
+      }
+      liste.forEach((kosul, i) => {
+        const satir = el("div", "blockrow");
+        const ent = el("input", "nin");
+        ent.value = kosul.entity || "";
+        ent.placeholder = this.T("block_ent");
+        ent.onchange = () => { kosul.entity = ent.value.trim(); this._save(); };
+        const durum = el("input", "nin mini");
+        durum.value = kosul.state || "";
+        durum.placeholder = this.T("block_st");
+        durum.onchange = () => { kosul.state = durum.value.trim(); this._save(); };
+        const sil = el("button", "btn ghost mini");
+        sil.textContent = "×";
+        sil.title = this.T("remove");
+        sil.onclick = () => { liste.splice(i, 1); this._save(); ciz(); };
+        satir.appendChild(ent);
+        satir.appendChild(durum);
+        satir.appendChild(sil);
+        kutu.appendChild(satir);
+      });
+      const ekle = el("button", "btn ghost mini");
+      ekle.textContent = this.T("block_add");
+      ekle.onclick = () => { liste.push({ entity: "", state: "" }); this._save(); ciz(); };
+      kutu.appendChild(ekle);
+    };
+    ciz();
+    row.appendChild(kutu);
+    return row;
   }
 
   _row(parent, label, sub) {
@@ -5491,8 +5549,9 @@ Object.assign(LumenPanel.prototype, {
     if (st.off_in) tags.appendChild(el("span", "tag tmr", "⏱ " + mmss(st.off_in)));
     if (st.paused_in) {
       tags.appendChild(el("span", "tag wrn", esc(this.T("fuse_for", { t: mmss(st.paused_in) }))));
-    } else if (st.locked_in) {
-      tags.appendChild(el("span", "tag", esc(this.T("locked_for", { t: mmss(st.locked_in) }))));
+    } else if (st.blocked) {
+      tags.appendChild(el("span", "tag",
+        esc(this.T("blocked_by", { w: st.blocked }))));
     }
     /* "no sensor" is already said by the badges above — saying it twice just
      * makes the card look broken. */
@@ -6280,6 +6339,8 @@ Object.assign(LumenPanel.prototype, {
       sel.onchange = () => { rule.scene = sel.value; this._save(); this._renderStage(); };
       scRow.appendChild(sel);
     }
+
+    this._blockRow(card, rule);
 
     const offRow = this._row(card, this.T("off_after"), this.T("off_after_s"));
     const offOn = rule.off_enabled !== false;

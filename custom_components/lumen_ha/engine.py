@@ -235,9 +235,14 @@ def _deep_default(raw: dict) -> dict:
     rooms = {}
     for rid, room in cfg["rooms"].items():
         room = _merge(DEFAULT_ROOM, room if isinstance(room, dict) else {})
-        room.pop("manual_respect", None)     # gone: see _light_event
-        room.pop("respect_set", None)
-        room["manual_off"] = False
+        # Kaldırılan "bu ışığa kim dokundu" tahmininden kalanlar. Motor
+        # hiçbirini okumuyordu; ayar dosyasında durup "bu ne işe yarıyor"
+        # sorusunu doğuruyorlardı.
+        for olu in ("manual_respect", "respect_set", "manual_off"):
+            room.pop(olu, None)
+        for dilim in (room.get("slots") or {}).values():
+            if isinstance(dilim, dict):
+                dilim.pop("keep_manual_off", None)
         if not room.get("fade_set"):
             room["transition"] = 0
             room["fade_set"] = True
@@ -456,7 +461,7 @@ class LumenEngine:
             "on_by_us": False, "off_at": 0.0, "dim": False,
             "acted_at": 0.0,
             # Set only by the panel's "leave this room alone for N hours".
-            "lux_frozen": None, "locked_until": 0.0, "paused_until": 0.0,
+            "lux_frozen": None, "paused_until": 0.0,
             # LUMEN offers to put a room out once per empty spell. gave_off
             # remembers that the offer has been made; from then on a light that
             # is on again is watched, not fought — stuck_since is when the
@@ -527,6 +532,35 @@ class LumenEngine:
                 self._cancel(rid, "dim")
                 self._state(rid)["off_at"] = 0.0
         async_dispatcher_send(self.hass, f"{DOMAIN}_mode")
+
+    def _blocked_by(self, rid: str) -> str:
+        """Bu dilimde odayı açmayı engelleyen bir durum var mı?
+
+        Süreli kilidin yerini aldı. "Şu kadar dakika kapalı kalsın" hatırlamayı
+        gerektiriyordu; bu ise evin kendi hâline bakıyor: televizyon açıkken
+        salonun ışığı açılmasın, biri uyuyorken yatak odası açılmasın.
+
+        Yalnız AÇMAYI engeller. Yanan bir ışığı söndürmez, geri sayımı
+        durdurmaz — koşul, ışığın açılmasına dairdir.
+
+        Durum elle yazılıyor çünkü hangi cihazın hangi durumu taşıdığı
+        markadan markaya değişiyor: bir televizyon "playing" der, bir başkası
+        "on".
+        """
+        for kosul in (self.slot_rule(rid).get("block") or []):
+            if not isinstance(kosul, dict):
+                continue
+            eid = str(kosul.get("entity") or "").strip()
+            beklenen = str(kosul.get("state") or "").strip()
+            if not eid or not beklenen:
+                continue
+            st = self.hass.states.get(eid)
+            if st is None:
+                continue
+            if str(st.state).strip().lower() == beklenen.lower():
+                return self.tr(f"{self._name_of(eid)} = {beklenen}",
+                               f"{self._name_of(eid)} = {beklenen}")
+        return ""
 
     def _mode_allows(self, rid: str, mode: dict) -> tuple[bool, str]:
         """Can this room switch on under the current mode?"""
@@ -904,10 +938,9 @@ class LumenEngine:
         if rts["paused_until"] > now:
             left = int(rts["paused_until"] - now)
             return no(self.tr(f"sigorta attı, {left} sn", f"fuse tripped, {left} s"))
-        if rts["locked_until"] > now:
-            left = max(1, int((rts["locked_until"] - now) / 60))
-            return no(self.tr(f"oda kilitli, {left} dk",
-                              f"room is locked, {left} min"))
+        engel = self._blocked_by(rid)
+        if engel:
+            return no(engel)
 
         mode = self.mode_cfg()
         allowed, why = self._mode_allows(rid, mode)
@@ -2096,7 +2129,7 @@ class LumenEngine:
                 "by_us": rts["on_by_us"],
                 "dim": rts["dim"],
                 "off_in": max(0, int(rts["off_at"] - now)) if rts["off_at"] else 0,
-                "locked_in": max(0, int(rts["locked_until"] - now)),
+                "blocked": self._blocked_by(rid) or "",
                 "paused_in": max(0, int(rts["paused_until"] - now)),
                 "would": decision["on"],
                 "why": decision["reason"],
@@ -2148,7 +2181,6 @@ class LumenEngine:
                     self._do_off(rid, "manual")
                 else:
                     rts = self._state(rid)
-                    rts["locked_until"] = 0.0
                     rts["paused_until"] = 0.0
                     self._do_on(rid, "panel", asked=True)
             finally:
@@ -2181,21 +2213,6 @@ class LumenEngine:
             await self.async_save(cfg)
             found = await self.async_autofill(build_layout=True)
             return {"ok": True, "found": found}
-
-        if action == "room_lock":
-            if rid not in self.rooms():
-                return {"ok": False, "error": "unknown room"}
-            hours = float(body.get("hours") or 2)
-            rts = self._state(rid)
-            rts["locked_until"] = time.time() + hours * 3600 if hours else 0.0
-            self._cancel(rid, "off")
-            self._cancel(rid, "dim")
-            self.log(rid, "lock", self.tr(
-                f"{self.room_name(rid)} {hours:g} saat kilitlendi"
-                if hours else f"{self.room_name(rid)} kilidi açıldı",
-                f"{self.room_name(rid)} locked for {hours:g} h"
-                if hours else f"{self.room_name(rid)} unlocked"))
-            return {"ok": True}
 
         if action == "reset_fuse":
             rts = self._state(rid)

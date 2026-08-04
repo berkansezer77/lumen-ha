@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.0.2 — a condition instead of a timer
+
+**The timed room lock is gone.** "Leave this room alone for three hours" asked
+you to remember something; a house should not need to be remembered.
+
+**In its place: conditions, per slot.** A slot can now name entities and the
+state they must be in for the room to be left alone:
+
+| While | Room | Condition |
+|---|---|---|
+| The television is playing | living room | `media_player.tv` = `playing` |
+| Somebody is asleep | bedroom | `binary_sensor.bed_occupied` = `on` |
+| The projector is on | cinema | `switch.projector` = `on` |
+
+It only withholds the decision to **switch on** — a light already burning is
+not put out, and the countdown is unaffected. The reason appears on the room
+the same way every other decision does ("Tv = playing").
+
+Entity and state are typed in by hand rather than picked from a list: a
+television that reports `playing` and one that reports `on` are both
+televisions, and a list would have excluded whichever we did not think of.
+
+**Also removed:** two dead settings left over from the old "did you touch this
+switch yourself" inference — `manual_off` on rooms and `keep_manual_off` on
+slots. Nothing read them; they sat in exported configurations inviting the
+question "what does this do?". The `lumen_ha.lock_room` service is gone with
+the feature.
+
 ## 1.0.1 — the second audit
 
 A security review of 1.0.0 found four real defects. All are fixed.

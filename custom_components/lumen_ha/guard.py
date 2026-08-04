@@ -27,6 +27,7 @@ MAX_LIST = 500          # bir odanın tetik/tutucu/ışık listesi
 MAX_SLOTS = 24          # oda başına zaman dilimi
 MAX_MODES = 50
 MAX_FLOORS = 20
+MAX_BLOCK = 20          # bir dilimdeki engel koşulu
 MAX_TEXT = 2000         # tek bir metin alanı
 MAX_KEY = 128           # oda kimliği, mod anahtarı
 
@@ -233,6 +234,22 @@ def clean(cfg: Any, raw_len: int | None = None) -> tuple[dict, list[str]]:
                 if len(liste) > MAX_LIST:
                     raise ConfigRejected(
                         f"{rid}.{alan} çok uzun ({len(liste)}, sınır {MAX_LIST})")
+            # Engel koşulları: liste, içinde nesne, makul sayıda.
+            for slot in (room.get("slots") or {}).values():
+                if not isinstance(slot, dict):
+                    continue
+                engel = slot.get("block")
+                if engel is None:
+                    continue
+                if not isinstance(engel, list):
+                    raise ConfigRejected(f"{rid}: engel listesi bir liste olmalı")
+                if len(engel) > MAX_BLOCK:
+                    raise ConfigRejected(
+                        f"{rid}: çok fazla engel koşulu ({len(engel)}, sınır {MAX_BLOCK})")
+                for kosul in engel:
+                    if not isinstance(kosul, dict):
+                        raise ConfigRejected(f"{rid}: engel koşulu bir nesne olmalı")
+
             slots = room.get("slots")
             if slots is not None and not isinstance(slots, dict):
                 raise ConfigRejected(f"{rid}.slots bir nesne olmalı")

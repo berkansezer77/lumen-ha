@@ -548,7 +548,7 @@ async def _async_register_card_resource(hass: HomeAssistant, url: str) -> bool:
 
 
 def _register_services(hass: HomeAssistant, engine: LumenEngine) -> None:
-    """lumen_ha.set_mode / room / lock_room / autofill
+    """lumen_ha.set_mode / room / autofill
 
     Ev halkının kullanacağı tek servis `room`; o da çağıranın kimliğini
     taşıyor, böylece Home Assistant kullanıcının o ışığa yetkisi olup
@@ -563,8 +563,8 @@ def _register_services(hass: HomeAssistant, engine: LumenEngine) -> None:
     def _sonucu_denetle(sonuc: dict, ne: str) -> None:
         """Motor 'yapamadım' diyorsa çağıran bunu bilsin.
 
-        Eskiden cevaba bakılmıyordu: `lock_room` motorun tanımadığı bir
-        eylem gönderiyor, servis yine de başarılı görünüyordu.
+        Cevaba bakılmazsa servis "yaptım" der ve hiçbir şey yapmamış
+        olabilir; bir sürüm boyunca öyle bir servis taşıdık.
         """
         if not (sonuc or {}).get("ok"):
             hata = (sonuc or {}).get("error") or "bilinmeyen hata"
@@ -579,15 +579,6 @@ def _register_services(hass: HomeAssistant, engine: LumenEngine) -> None:
             "room": call.data["room"],
         }, user_id=call.context.user_id), "room")
 
-    async def _lock(call: ServiceCall) -> None:
-        # Motorun tanıdığı ad "room_lock"; "lock" gönderiliyordu ve servis
-        # hiçbir şey yapmadan başarılı görünüyordu.
-        _sonucu_denetle(await engine.async_action({
-            "action": "room_lock",
-            "room": call.data["room"],
-            "hours": call.data.get("hours", 2),
-        }, user_id=call.context.user_id), "lock_room")
-
     async def _autofill(_call: ServiceCall) -> None:
         await engine.async_autofill()
 
@@ -601,15 +592,6 @@ def _register_services(hass: HomeAssistant, engine: LumenEngine) -> None:
     async_register_admin_service(
         hass, DOMAIN, "set_mode", _set_mode,
         schema=vol.Schema({vol.Required("mode"): cv.string}),
-    )
-    async_register_admin_service(
-        hass, DOMAIN, "lock_room", _lock,
-        schema=vol.Schema({
-            vol.Required("room"): cv.string,
-            # Servis açıklaması 0–24 saat diyor; söylediğini uygula.
-            vol.Optional("hours", default=2): vol.All(
-                vol.Coerce(float), vol.Range(min=0, max=24)),
-        }),
     )
     async_register_admin_service(
         hass, DOMAIN, "autofill", _autofill, schema=vol.Schema({}))
@@ -629,7 +611,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     engine = data.pop("engine", None)
     if engine is not None:
         engine.shutdown()
-    for name in ("set_mode", "room", "lock_room", "autofill"):
+    for name in ("set_mode", "room", "autofill"):
         hass.services.async_remove(DOMAIN, name)
     data.pop("services_registered", None)
     return True

@@ -57,7 +57,7 @@ print("2) SERVIS MOTORUN CEVABINI DENETLIYOR MU")
 # Cevaba bakilmazsa "yaptim" der, hicbir sey yapmaz.
 denetim = init_src[bas:son].count("_sonucu_denetle")
 print("   denetim cagrisi:", denetim)
-if denetim < 3:
+if denetim < 2:
     sorun.append("servisler motorun cevabini denetlemiyor (%d)" % denetim)
 
 # ── 2) davranis: room_lock gercekten kilitliyor mu ─────────────────────
@@ -127,14 +127,15 @@ def calistir(coro):
     raise AssertionError("beklenmedik askiya alma")
 
 
-print("3) room_lock ODAYI GERCEKTEN KILITLIYOR MU")
-sonuc = calistir(eng.async_action({"action": "room_lock", "room": "oda", "hours": 3}))
-kilit = eng._state("oda").get("locked_until", 0)
-print("   cevap:", sonuc, "| kilit suresi:", round(kilit - __import__("time").time()))
-if not (sonuc or {}).get("ok"):
-    sorun.append("room_lock calismadi: %s" % sonuc)
-if kilit <= 0:
-    sorun.append("oda kilitlenmedi")
+print("3) SURELI KILIT KALKTI MI")
+# 1.0.2'de kaldirildi: "su kadar dakika kapali kalsin" hatirlamayi
+# gerektiriyordu, yerini "su cihaz su durumdayken acma" aldi.
+for iz, nerede, kaynak in (("room_lock", "motor", eng_src),
+                           ("locked_until", "motor", eng_src),
+                           ("lock_room", "servisler", init_src)):
+    if iz in kaynak:
+        sorun.append("kilitten kalinti: %s (%s)" % (iz, nerede))
+print("   kalinti:", "yok" if not sorun else sorun)
 
 print("4) Tanimadigi eylem 'ok' DEMEMELI")
 sonuc = calistir(eng.async_action({"action": "lock", "room": "oda", "hours": 3}))
