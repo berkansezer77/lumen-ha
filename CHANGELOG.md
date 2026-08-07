@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.5 — a restart forgot who was in the room
+
+A room is only switched off after somebody was **seen** in it and then left —
+that is what stops a light coming on for a passing sensor blip from being put
+out by a countdown nobody started. But "somebody was seen here" lived only in
+memory, and a Home Assistant restart wipes it.
+
+So: restart Home Assistant while you are sitting in a room, walk out, and the
+light stays on until morning. LUMEN treats it as a light somebody switched on
+from outside and keeps its hands off — it warns ten minutes later instead
+("the room is empty and 8 lights have been on for 10 minutes"), which is
+exactly what the diary showed.
+
+The sensors already know. If they say a room is occupied, somebody is in it:
+that is now taken as *seen*, both when the integration starts and every half
+minute afterwards (the entities are not always loaded yet at start-up). The
+rule itself is unchanged — a room nobody has been in is still left alone.
+
 ## 1.0.4 — rooms with light groups
 
 A regression from 1.0.3: the permission check listed a room's switchable

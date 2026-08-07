@@ -1438,6 +1438,16 @@ class LumenEngine:
             self.hass, self._tick, timedelta(seconds=30))
         self._unsubs.append(async_track_time_interval(
             self.hass, self._dark_tick, timedelta(seconds=DARK_TICK)))
+        # Bir odada ŞU AN biri varsa, bunu "görüldü" say.
+        #
+        # Motorun çalışma zamanı hafızası yeniden başlatmada sıfırlanıyor —
+        # "burada biri görüldü" bilgisi de. Oda o sırada doluysa, kişi çıkınca
+        # LUMEN "bu ışığı dışarıdan biri yakmış" deyip elini çekiyor ve ışık
+        # sabaha kadar yanık kalıyordu. Sensör "dolu" diyorsa birinin orada
+        # olduğunu zaten biliyoruz; tahmin değil, okuma.
+        for rid in self.rooms():
+            if self.occupied(rid):
+                self._state(rid)["seen"] = True
         self._slot_now = self.slot_now()
         _LOGGER.debug("LUMEN: watching %d sensors, %d lights in %d rooms",
                       len(sensors), len(lights), len(self.rooms()))
@@ -1616,6 +1626,12 @@ class LumenEngine:
             if rts["timers"].get("off") or rts["timers"].get("dim"):
                 continue            # a countdown is already running; leave it
             if self.occupied(rid):
+                # Sensör "dolu" diyorsa birileri orada: bunu görülmüş say.
+                # Kurulum anında bu bilgi elde olmayabiliyor (entity'ler daha
+                # yüklenmemiş olur); yarım dakikada bir buradan tazeleniyor.
+                # Olmazsa, o kişi çıkınca LUMEN ışığı "dışarıdan yakılmış"
+                # sayıp elini çekiyor ve ışık sabaha kadar yanıyor.
+                rts["seen"] = True
                 # Nothing moved, but the room did get darker. Movement is not
                 # the only thing that can change the answer, and sitting still
                 # in a room that has gone dark is the commonest case of all.
