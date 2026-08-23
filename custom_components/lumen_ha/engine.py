@@ -1010,6 +1010,11 @@ class LumenEngine:
         room = self.room(rid)
         rts = self._state(rid)
         rts["seen"] = True          # a sensor fired: somebody is here
+        # Bos kalma bitti: "bir kez teklif" o bos kalmaya aitti, bu ana degil.
+        # Tek sensorlu odalarda (tetik ve tutucu ayni entity) bayragi
+        # temizleyecek baska bir yol yok — ve temizlenmezse oda bir daha
+        # HIC sonmuyor.
+        rts["gave_off"] = False
         # Any pending "go dark" is off the table the moment we see life.
         self._cancel(rid, "off")
         if rts["dim"]:
@@ -1626,7 +1631,9 @@ class LumenEngine:
             if rts["timers"].get("off") or rts["timers"].get("dim"):
                 continue            # a countdown is already running; leave it
             if self.occupied(rid):
-                # Sensör "dolu" diyorsa birileri orada: bunu görülmüş say.
+                # Sensör "dolu" diyorsa birileri orada: bunu görülmüş say
+                # ve o boş kalmayı bitmiş kabul et.
+                rts["gave_off"] = False
                 # Kurulum anında bu bilgi elde olmayabiliyor (entity'ler daha
                 # yüklenmemiş olur); yarım dakikada bir buradan tazeleniyor.
                 # Olmazsa, o kişi çıkınca LUMEN ışığı "dışarıdan yakılmış"

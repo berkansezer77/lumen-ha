@@ -7,7 +7,7 @@ FRONTEND_URL_BASE = "/lumen_ha_frontend"
 
 # Bump on every frontend change — the version lives in the FILE NAME (not ?v=)
 # so service workers / browser caches are forced to fetch the fresh file.
-FRONTEND_VERSION = "1.0.5"
+FRONTEND_VERSION = "1.0.6"
 
 STORE_VERSION = 1
 STORE_KEY = "lumen_config"

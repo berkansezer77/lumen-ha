@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.6 — the room that would never go dark again
+
+When a room empties, LUMEN puts it out **once** and then leaves it alone: if
+something switches the light back on, wrestling with it is how a house ends up
+flickering all night. That "once" was meant to last for one empty spell.
+
+It lasted forever. The flag was only cleared in one code path — the one that
+runs when a *holder* sensor comes on while the room is already being watched.
+In a room whose presence sensor is both the waker and the holder (the ordinary
+case for a small room) that path never runs. So the first time LUMEN switched
+such a room off was the last: from then on it only warned, ten minutes later,
+that the room was empty and the lights were still on.
+
+It hid well. A room lit by a *trigger* recovers on the way in, so most rooms
+looked fine; the ones that went wrong were the rooms lit by the darkness rule
+in a slot whose "switch on" is off — where the trigger is blocked and never
+gets the chance to clear the flag.
+
+Somebody being in the room now clears it, in both places where we learn it:
+the sensor firing, and the half-minute sweep.
+
 ## 1.0.5 — a restart forgot who was in the room
 
 A room is only switched off after somebody was **seen** in it and then left —

@@ -188,6 +188,37 @@ if HASS.states.get(LIGHT).state != "off":
     sorun.append("YENIDEN BASLATMADAN sonra cikista isik sonmedi "
                  "(oda doluyken restart -> 'goruldu' kaybi)")
 
+print("8) BIR KEZ SONDURULMUS ODA, SONRA KARANLIK KURALIYLA YANARSA")
+print("   cikista YINE sonmeli")
+# "Bir kez teklif" bayragi yalniz _maybe_clear'in dolu dalinda temizleniyordu.
+# Tetik ve tutucu ayni entity olan bir odada o dal hic calismiyor: bayrak
+# takili kaliyor ve oda BIR DAHA HIC sonmuyor. Gunduz dilimi "acma" derken
+# odayi karanlik kurali yaktiginda tam da bu oluyor.
+eng2 = LumenEngine(HASS, Store({"config": CFG}))
+eng2.config = CFG
+eng2._boot_at = 0.0
+eng2._state("ofis")["gave_off"] = True          # daha once bir kez sondurulmus
+HASS.states.set(SENS, "on", 0)
+HASS.states.d[LIGHT] = St(LIGHT, "on", 5)       # karanlik kuraliyla yanmis
+eng2._sweep()
+while bekleyen:
+    cb = bekleyen.pop(0)
+    try: cb(None)
+    except TypeError: cb()
+print("   dolu iken gave_off:", eng2._state("ofis").get("gave_off"))
+if eng2._state("ofis").get("gave_off"):
+    sorun.append("oda dolu oldugu halde 'bir kez teklif' bayragi temizlenmedi")
+HASS.services.calls.clear()
+HASS.states.set(SENS, "off", 0)
+eng2._maybe_clear("ofis")
+while bekleyen:
+    cb = bekleyen.pop(0)
+    try: cb(None)
+    except TypeError: cb()
+print("   isik:", HASS.states.get(LIGHT).state, "| komutlar:", HASS.services.calls or "yok")
+if HASS.states.get(LIGHT).state != "off":
+    sorun.append("bir kez sondurulmus oda bir daha hic sonmuyor")
+
 print()
 if sorun:
     print("SORUN:")
