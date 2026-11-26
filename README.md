@@ -77,8 +77,9 @@ by looking rather than remembering.
 
 ## On a dashboard
 
-The same house as a Lovelace card — `custom:lumen-house-card`. It registers
-itself; there is no resource to add.
+The same house as a Lovelace card, `custom:lumen-house-card`. It ships with the
+integration and loads with it; there is no resource to add, and Lumen never
+touches your resource list.
 
 ```yaml
 type: custom:lumen-house-card
@@ -128,9 +129,17 @@ restart, then add the integration.
 
 ## Notes
 
-Room artwork you upload is stored in `config/www/lumen/`. Home Assistant serves
-that folder **without authentication** at `/local/…`, so treat anything you
-upload as public to anyone who can reach your Home Assistant address.
+Room photos and artwork you upload are stored in `config/lumen_ha/images/`,
+outside `www/`, and are only served to signed-in Home Assistant users. They are
+never reachable at a public `/local/…` address.
+
+Versions up to 1.0.6 kept uploads in `config/www/lumen/`, which Home Assistant
+serves without authentication. On the first start after updating, Lumen moves
+those files into the new folder, updates every room that uses them and removes
+the old folder.
+
+If an older version added a `lumen-panel` entry under **Settings → Dashboards →
+Resources**, you can delete it; the card no longer needs it.
 
 ## Documentation
 

@@ -12,6 +12,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import shutil
+
+from aiohttp import web
 
 import voluptuous as vol
 
@@ -24,7 +28,6 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.start import async_at_start
 from homeassistant.helpers.storage import Store
 from homeassistant.util import slugify
 
@@ -32,8 +35,10 @@ from .const import (
     DOMAIN,
     FRONTEND_URL_BASE,
     FRONTEND_VERSION,
-    IMAGE_DIR,
     IMAGE_EXT,
+    IMAGE_STORE,
+    IMAGE_URL,
+    LEGACY_IMAGE_DIR,
     MAX_UPLOAD,
     PLATFORMS,
     ROOM_TYPES,
@@ -98,6 +103,84 @@ def _is_admin(request) -> bool:
     return bool(user and user.is_admin)
 
 
+def _image_folder(hass: HomeAssistant) -> str:
+    """Where uploaded photos are kept: outside www/, so never public."""
+    return hass.config.path(*IMAGE_STORE)
+
+
+_LEGACY_URL = re.compile(r"^/local/" + re.escape(LEGACY_IMAGE_DIR) + r"/([^/?#]+)$")
+
+
+def _relink(obj, renamed: dict[str, str] | None = None):
+    """Point every old /local/lumen/<name> address at the authenticated view.
+
+    Used on the stored configuration and its backups after the files move, and
+    on every incoming config, so an older export imported later still works.
+    """
+    if isinstance(obj, str):
+        m = _LEGACY_URL.match(obj)
+        if not m:
+            return obj
+        name = m.group(1)
+        return f"{IMAGE_URL}/{(renamed or {}).get(name, name)}"
+    if isinstance(obj, dict):
+        return {k: _relink(v, renamed) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_relink(v, renamed) for v in obj]
+    return obj
+
+
+def _move_legacy_images(old: str, new: str) -> dict[str, str]:
+    """Move photos uploaded by 1.0.6 and older out of www/lumen.
+
+    Runs in the executor. Returns {old name: new name} for any file that had to
+    be renamed because the target name was taken. The old folder is removed
+    once it is empty, so nothing of ours is left under /local/.
+    """
+    renamed: dict[str, str] = {}
+    if not os.path.isdir(old):
+        return renamed
+    os.makedirs(new, exist_ok=True)
+    for name in os.listdir(old):
+        src = os.path.join(old, name)
+        if not os.path.isfile(src) or not name.lower().endswith(IMAGE_EXT):
+            continue
+        target = os.path.join(new, name)
+        base, dot = os.path.splitext(target)
+        n = 2
+        while os.path.exists(target):
+            target = f"{base}_{n}{dot}"
+            n += 1
+        shutil.move(src, target)
+        if os.path.basename(target) != name:
+            renamed[name] = os.path.basename(target)
+    try:
+        os.rmdir(old)
+    except OSError:
+        pass  # something else is still in there; leave it alone
+    return renamed
+
+
+async def _async_migrate_images(hass: HomeAssistant, engine: LumenEngine) -> None:
+    """Move legacy uploads and rewrite the addresses that point at them."""
+    old = hass.config.path("www", LEGACY_IMAGE_DIR)
+    try:
+        renamed = await hass.async_add_executor_job(
+            _move_legacy_images, old, _image_folder(hass))
+    except OSError as err:
+        _LOGGER.error("LUMEN: could not move photos out of %s: %s", old, err)
+        return
+    cfg = _relink(engine.config, renamed)
+    if cfg != engine.config:
+        engine.config = cfg
+        await engine.store.async_save(engine.config)
+        _LOGGER.info("LUMEN: photos moved out of /local/; addresses updated")
+    backups = _relink(engine.backups, renamed)
+    if backups != engine.backups:
+        engine.backups = backups
+        await engine.backups_store.async_save({"backups": engine.backups})
+
+
 class LumenConfigView(HomeAssistantView):
     """Read/write the panel configuration."""
 
@@ -151,7 +234,7 @@ class LumenConfigView(HomeAssistantView):
             return self.json_message(f"Config rejected: {err}", status_code=400)
         if notes:
             _LOGGER.info("LUMEN: yapılandırmada %d değer sınıra çekildi", len(notes))
-        await self._engine.async_save(body)
+        await self._engine.async_save(_relink(body))
         # Sensors or lights may have moved between rooms — relisten.
         self._engine.setup()
         async_dispatcher_send(self._engine.hass, SIGNAL_CONFIG)
@@ -312,7 +395,7 @@ class LumenImageView(HomeAssistantView):
         return _engine_of(self._hass)
 
     def _folder(self) -> str:
-        return self._hass.config.path("www", IMAGE_DIR)
+        return _image_folder(self._hass)
 
     def _scan(self) -> list[dict]:
         folder = self._folder()
@@ -326,7 +409,7 @@ class LumenImageView(HomeAssistantView):
                 size = os.path.getsize(os.path.join(folder, name))
             except OSError:
                 size = 0
-            out.append({"name": name, "url": f"/local/{IMAGE_DIR}/{name}", "size": size})
+            out.append({"name": name, "url": f"{IMAGE_URL}/{name}", "size": size})
         return out
 
     async def get(self, request):
@@ -364,7 +447,7 @@ class LumenImageView(HomeAssistantView):
             return self.json_message("File too large", status_code=413)
         # The name says image; the first bytes have to agree. Whatever is
         # stored here is served back to every browser that opens the panel,
-        # so "trust the extension" is not enough for a public folder.
+        # so "trust the extension" is not enough.
         if not _looks_like_image(payload):
             return self.json_message("Not a recognised image", status_code=400)
         # Dosya boyutu tek başına yetmiyor: küçük bir dosya açıldığında yüz
@@ -400,8 +483,38 @@ class LumenImageView(HomeAssistantView):
         except OSError as err:
             return self.json_message(f"Could not save: {err}", status_code=500)
 
-        return self.json({"ok": True, "url": f"/local/{IMAGE_DIR}/{stored}",
+        return self.json({"ok": True, "url": f"{IMAGE_URL}/{stored}",
                           "name": stored})
+
+
+class LumenImageFileView(HomeAssistantView):
+    """Serve one uploaded photo, to signed-in users only.
+
+    The panel and the card show these as CSS background images, which cannot
+    carry a bearer token, so the frontend asks Home Assistant for a signed path
+    (`auth/sign_path`) and loads that. Either way the request is authenticated:
+    a photo is never readable by someone who merely reaches the URL.
+    """
+
+    url = IMAGE_URL + "/{name}"
+    name = "api:lumen_ha:image_file"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def get(self, request, name: str):
+        # A bare file name from our own folder, nothing else.
+        if (name != os.path.basename(name) or name.startswith(".")
+                or not name.lower().endswith(IMAGE_EXT)):
+            raise web.HTTPNotFound()
+        path = os.path.join(_image_folder(self._hass), name)
+        if not await self._hass.async_add_executor_job(os.path.isfile, path):
+            raise web.HTTPNotFound()
+        return web.FileResponse(path, headers={
+            "Cache-Control": "private, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
+        })
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -414,6 +527,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         engine = LumenEngine(hass, store)
         await engine.async_load()
         domain_data["engine"] = engine
+        await _async_migrate_images(hass, engine)
 
     if not domain_data.get("frontend_registered"):
         frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
@@ -426,6 +540,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.http.register_view(LumenInsightView(hass))
         hass.http.register_view(LumenBackupView(hass))
         hass.http.register_view(LumenImageView(hass))
+        hass.http.register_view(LumenImageFileView(hass))
 
         try:
             await panel_custom.async_register_panel(
@@ -441,6 +556,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except ValueError:
             pass  # already registered (entry reload)
 
+        # The dashboard card (custom:lumen-house-card) lives in the panel's file.
+        # It is loaded as an extra frontend module, the same way the panel is
+        # served, so the user's Lovelace resource list is never read or written.
+        add_extra_js_url(hass, f"{FRONTEND_URL_BASE}/lumen-panel-{FRONTEND_VERSION}.js")
+        domain_data["card_resource"] = {
+            "url": f"{FRONTEND_URL_BASE}/lumen-panel-{FRONTEND_VERSION}.js",
+            "how": "extra_js",
+        }
+
         domain_data["frontend_registered"] = True
 
     # Servisler her kurulumda yeniden kaydedilir — bilerek "bir kez kur"
@@ -450,101 +574,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # o anki motora bağlanır, eskisine değil.
     _register_services(hass, engine)
 
-    # Kart kaydı: kullanıcı hiçbir şey eklemeden custom:lumen-house-card
-    # çalışsın, güncellemeden sonra da kendiliğinden tazelensin.
-    #
-    # Bilerek yukarıdaki "bir kez kur" bloğunun DIŞINDA. Sürüm dosya adında
-    # olduğu için bir güncellemeden sonra kayıtlı adres eskir ve eski dosya
-    # artık yok — girdi tazelenmezse pano 404'e bakar. Blok içindeyken bayrak
-    # ikinci kurulumda kaydı atlıyor ve tam da bu oluyordu.
-    card_url = f"{FRONTEND_URL_BASE}/lumen-panel-{FRONTEND_VERSION}.js"
-
-    async def _card_at_start(_hass: HomeAssistant) -> None:
-        # Lovelace'in kaynak listesi HA açılırken hazır olmayabilir; açılışa
-        # bağlı çalışır, HA zaten ayaktaysa hemen.
-        if await _async_register_card_resource(hass, card_url):
-            nasil = "resource"
-            _LOGGER.info("LUMEN: kart kaynağı kayıtlı → %s", card_url)
-        else:
-            # YAML modundaki panolarda kaynak listesi salt okunur; kartı
-            # görünür kılan tek yol bu.
-            add_extra_js_url(hass, card_url)
-            nasil = "extra_js"
-            _LOGGER.info(
-                "LUMEN: kaynak listesi yazılamadı, extra-module-url ile "
-                "yüklenecek → %s", card_url)
-        # Log dosyası her kurulumda okunabilir olmuyor; sonucu tanılamaya yaz.
-        domain_data["card_resource"] = {"url": card_url, "how": nasil}
-
-    async_at_start(hass, _card_at_start)
-
     engine.setup()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
-
-
-async def _async_register_card_resource(hass: HomeAssistant, url: str) -> bool:
-    """Kartı Lovelace kaynağı olarak kaydet; yerinde tut.
-
-    Panelin dosyası kartın da dosyası. Sürüm dosya adında olduğu için bir
-    güncellemeden sonra kayıtlı adres eskir — bu yüzden eski `lumen-panel-*`
-    girdileri silinip tek bir güncel girdi bırakılıyor. İki girdi kalırsa
-    tarayıcı dosyayı iki kez yükler ve ikinci `customElements.define` kartı
-    alıp götürür.
-
-    Yapılamadığında (YAML modundaki panolar) False döner; çağıran taraf
-    extra-module-url'e düşer.
-    """
-    lovelace = hass.data.get("lovelace")
-    if lovelace is None:
-        # Kart görünmeyince ilk bakılacak satır: neden yazamadık.
-        _LOGGER.warning("LUMEN: Lovelace henüz hazır değil, kaynak yazılamadı")
-        return False
-    resources = getattr(lovelace, "resources", None)
-    if resources is None and isinstance(lovelace, dict):
-        resources = lovelace.get("resources")
-    # YAML modundaki koleksiyonun yazma yöntemleri yoktur.
-    if resources is None or not hasattr(resources, "async_create_item"):
-        _LOGGER.warning(
-            "LUMEN: kaynak listesi yazılabilir değil (%s) — YAML modu olabilir",
-            type(resources).__name__)
-        return False
-
-    try:
-        if hasattr(resources, "async_get_info"):
-            await resources.async_get_info()
-        elif getattr(resources, "loaded", True) is False:
-            await resources.async_load()
-            resources.loaded = True
-
-        target = None
-        extras = []
-        for item in resources.async_items():
-            if "lumen-panel" in str(item.get("url", "")):
-                if target is None:
-                    target = item
-                else:
-                    extras.append(item)
-        for item in extras:
-            try:
-                await resources.async_delete_item(item["id"])
-            except Exception:  # noqa: BLE001
-                pass
-        if target:
-            onceki = target.get("url")     # güncellemeden SONRA okunursa
-            if onceki != url:              # ikisi aynı yazılır
-                await resources.async_update_item(
-                    target["id"], {"res_type": "module", "url": url}
-                )
-                _LOGGER.info("LUMEN: kart kaynağı tazelendi: %s → %s",
-                             onceki, url)
-            return True
-        await resources.async_create_item({"res_type": "module", "url": url})
-        _LOGGER.info("LUMEN: kart kaynağı oluşturuldu: %s", url)
-        return True
-    except Exception as err:  # noqa: BLE001
-        _LOGGER.warning("LUMEN: kart kaynağı kaydedilemedi: %s", err)
-        return False
 
 
 def _register_services(hass: HomeAssistant, engine: LumenEngine) -> None:

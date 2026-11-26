@@ -7,7 +7,7 @@ FRONTEND_URL_BASE = "/lumen_ha_frontend"
 
 # Bump on every frontend change — the version lives in the FILE NAME (not ?v=)
 # so service workers / browser caches are forced to fetch the fresh file.
-FRONTEND_VERSION = "1.0.6"
+FRONTEND_VERSION = "1.0.7"
 
 STORE_VERSION = 1
 STORE_KEY = "lumen_config"
@@ -23,7 +23,14 @@ PLATFORMS = ["select", "switch"]
 MAX_EVENTS = 300
 
 # Where uploaded room artwork lands (under config/www).
-IMAGE_DIR = "lumen"
+# Uploaded room photos and artwork live OUTSIDE www/: /local/ is served without
+# authentication, and a photo of somebody's bedroom must not be. They are kept
+# under <config>/lumen_ha/images and served by an authenticated view.
+IMAGE_STORE = ("lumen_ha", "images")
+IMAGE_URL = "/api/lumen_ha/image"
+# Where versions up to 1.0.6 put them (www/lumen, i.e. /local/lumen/). Only
+# used to move existing files out on the first start after the update.
+LEGACY_IMAGE_DIR = "lumen"
 IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif")
 MAX_UPLOAD = 12 * 1024 * 1024
 
@@ -183,7 +190,7 @@ DEFAULT_ROOM = {
     # Empty means "whatever the type suggests"; a name like mdi:sofa overrides
     # it, because no list of forty room types covers everybody's home.
     "icon": "",
-    "image": "",            # /local/lumen/… uploaded artwork
+    "image": "",            # /api/lumen_ha/image/… uploaded artwork
     "trigger": [],          # fires the light
     "hold": [],             # keeps the light on while occupied
     # "any" = one sensor is enough (the default), "all" = they must agree.

@@ -2095,6 +2095,12 @@ const CSS8 = `
 }
 `;
 
+/* Uploaded photos: served by an authenticated view, shown through signed
+ * paths (see _setBg). One cache for the panel and every card on the page. */
+const LUMEN_IMG = "/api/lumen_ha/image";
+const LUMEN_SIGN_SECONDS = 24 * 60 * 60;
+const LUMEN_SIGNED = new Map();
+
 class LumenPanel extends HTMLElement {
   constructor() {
     super();
@@ -2338,14 +2344,64 @@ class LumenPanel extends HTMLElement {
    * Eskiden yalnız tırnak ve parantez siliniyordu; dışarıdan bir adres
    * kalabiliyordu. Paylaşılan bir ayar dosyası, açan herkesin tarayıcısına
    * yabancı bir sunucuya istek attırabilirdi — o istek IP adresini, saatini
-   * ve tarayıcısını taşır. Görseller zaten /local/... altına yükleniyor. */
+   * ve tarayıcısını taşır. Yüklenen görseller /api/lumen_ha/image/ altında. */
   _safeUrl(url) {
-    const ham = String(url || "").replace(/["'()\\\n\r]/g, "").trim();
+    let ham = String(url || "").replace(/["'()\\\n\r]/g, "").trim();
+    // 1.0.6 and older stored uploads under /local/lumen/, which anyone could
+    // read. The files have moved; old addresses (an old export, a backup) are
+    // pointed at the authenticated view.
+    if (ham.startsWith("/local/lumen/")) ham = LUMEN_IMG + "/" + ham.slice(13);
     if (!ham) return "";
     if (ham.startsWith("//")) return "";          // protokole miras kalan adres
     if (/^[a-z][a-z0-9+.-]*:/i.test(ham)) return "";   // http:, data:, javascript:
     // Baştaki bütün ./ ve ../ basamakları — biri yetmiyor, hepsi.
     return ham.startsWith("/") ? ham : "/" + ham.replace(/^(\.{1,2}\/)+/, "");
+  }
+  /* Put an image behind an element.
+   *
+   * Uploaded photos are served only to signed-in users. A CSS background
+   * cannot send the bearer token, so for those the frontend asks Home Assistant
+   * for a signed path first (auth/sign_path) and uses that. The element keeps
+   * the address it was last asked to show, so a slow answer for an old photo
+   * never overwrites a newer one. */
+  _setBg(el, url) {
+    if (!el) return;
+    const safe = this._safeUrl(url);
+    el.dataset.lumenBg = safe;
+    if (!safe) { el.style.backgroundImage = ""; return; }
+    if (!safe.startsWith(LUMEN_IMG + "/")) {
+      el.style.backgroundImage = "url('" + safe + "')";
+      return;
+    }
+    const hit = LUMEN_SIGNED.get(safe);
+    if (hit && hit.path && hit.until > Date.now()) {
+      el.style.backgroundImage = "url('" + hit.path + "')";
+      return;
+    }
+    this._signPath(safe).then((signed) => {
+      if (signed && el.dataset.lumenBg === safe) {
+        el.style.backgroundImage = "url('" + signed + "')";
+      }
+    });
+  }
+  _signPath(path) {
+    const hit = LUMEN_SIGNED.get(path);
+    if (hit && hit.until > Date.now()) return hit.pending || Promise.resolve(hit.path);
+    const entry = { path: "", until: Date.now() + 60 * 1000 };
+    entry.pending = (this._hass ? this._hass.callWS({
+      type: "auth/sign_path", path, expires: LUMEN_SIGN_SECONDS,
+    }) : Promise.reject(new Error("no hass"))).then((res) => {
+      entry.path = String((res && res.path) || "").replace(/["'()\\\n\r]/g, "");
+      // Re-sign well before the server-side expiry.
+      entry.until = Date.now() + (LUMEN_SIGN_SECONDS * 1000) / 2;
+      entry.pending = null;
+      return entry.path;
+    }).catch(() => {
+      LUMEN_SIGNED.delete(path);
+      return "";
+    });
+    LUMEN_SIGNED.set(path, entry);
+    return entry.pending;
   }
   /* One place decides what a photograph looks like, so the card, the memory
    * and anything added later can never drift apart. */
@@ -3229,13 +3285,13 @@ Object.assign(LumenPanel.prototype, {
         art[key] = "";
         this._save();
         slot.classList.remove("full");
-        slot.style.backgroundImage = "";
+        this._setBg(slot, "");
         clear.remove();
         this._renderStage();
       };
       return clear;
     };
-    if (art[key]) slot.style.backgroundImage = "url('" + this._safeUrl(art[key]) + "')";
+    if (art[key]) this._setBg(slot, art[key]);
     slot.appendChild(el("div", "as-l", esc(label)));
 
     const hint = el("div", "as-h");
@@ -3264,7 +3320,7 @@ Object.assign(LumenPanel.prototype, {
         this._save();
         this._flash(this.T("art_done"));
         slot.classList.add("full");
-        slot.style.backgroundImage = "url('" + this._safeUrl(json.url) + "')";
+        this._setBg(slot, json.url);
         if (!slot.querySelector(".as-x")) slot.appendChild(clearBtn());
         this._renderStage();
       } catch (err) {
@@ -4178,7 +4234,7 @@ Object.assign(LumenPanel.prototype, {
     if (photo) {
       top.classList.add("hasphoto");
       const layer = el("div", "photo");
-      layer.style.backgroundImage = "url('" + this._safeUrl(photo) + "')";
+      this._setBg(layer, photo);
       layer.style.filter = this._photoFilter(false);
       if (lit) layer.style.filter = this._photoFilter(true);
       top.appendChild(layer);
@@ -4381,7 +4437,7 @@ Object.assign(LumenPanel.prototype, {
     const floorArt = dark ? art.floor_night : art.floor_day;
     if (backdrop) {
       wrap.classList.add("hasart");
-      wrap.style.backgroundImage = "url('" + this._safeUrl(backdrop) + "')";
+      this._setBg(wrap, backdrop);
     }
     this._floorArt = floorArt || "";
     if (this._narrow()) {
@@ -4411,7 +4467,7 @@ Object.assign(LumenPanel.prototype, {
       iso.style.height = (rows * CELL_H) + "px";
       const plan = el("div", "floor" + (this._floorArt ? " hasart" : ""));
       if (this._floorArt) {
-        plan.style.backgroundImage = "url('" + this._safeUrl(this._floorArt) + "')";
+        this._setBg(plan, this._floorArt);
       }
       iso.appendChild(plan);
       for (const item of floor.rooms || []) {
@@ -4619,7 +4675,7 @@ Object.assign(LumenPanel.prototype, {
     const shot = this._roomImage(rid);
     if (shot) {
       const layer = el("div", "mphoto");
-      layer.style.backgroundImage = "url('" + this._safeUrl(shot) + "')";
+      this._setBg(layer, shot);
       plate.appendChild(layer);
       node.classList.add("hasphoto");
     }
@@ -8002,7 +8058,7 @@ Object.assign(LumenPanel.prototype, {
 });
 
 if (!customElements.get("lumen-panel")) {
-  customElements.define("lumen-panel", LumenPanel);
+  if (!customElements.get("lumen-panel")) customElements.define("lumen-panel", LumenPanel);
 }
 console.info("%c LUMEN %c panel loaded ", "background:#ec4b88;color:#fff;border-radius:3px 0 0 3px",
   "background:#8b3dff;color:#fff;border-radius:0 3px 3px 0");
@@ -8270,7 +8326,7 @@ class LumenHouseCard extends LumenPanel {
 }
 
 if (!customElements.get("lumen-house-card")) {
-  customElements.define("lumen-house-card", LumenHouseCard);
+  if (!customElements.get("lumen-house-card")) customElements.define("lumen-house-card", LumenHouseCard);
 }
 
 window.customCards = window.customCards || [];
