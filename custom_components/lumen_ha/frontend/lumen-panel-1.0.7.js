@@ -2388,9 +2388,15 @@ class LumenPanel extends HTMLElement {
     const hit = LUMEN_SIGNED.get(path);
     if (hit && hit.until > Date.now()) return hit.pending || Promise.resolve(hit.path);
     const entry = { path: "", until: Date.now() + 60 * 1000 };
-    entry.pending = (this._hass ? this._hass.callWS({
-      type: "auth/sign_path", path, expires: LUMEN_SIGN_SECONDS,
-    }) : Promise.reject(new Error("no hass"))).then((res) => {
+    let ask;
+    try {
+      ask = this._hass.callWS({
+        type: "auth/sign_path", path, expires: LUMEN_SIGN_SECONDS,
+      });
+    } catch (err) {
+      ask = Promise.reject(err);   // no connection yet: try again next render
+    }
+    entry.pending = Promise.resolve(ask).then((res) => {
       entry.path = String((res && res.path) || "").replace(/["'()\\\n\r]/g, "");
       // Re-sign well before the server-side expiry.
       entry.until = Date.now() + (LUMEN_SIGN_SECONDS * 1000) / 2;

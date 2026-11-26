@@ -108,7 +108,7 @@ def _image_folder(hass: HomeAssistant) -> str:
     return hass.config.path(*IMAGE_STORE)
 
 
-_LEGACY_URL = re.compile(r"^/local/" + re.escape(LEGACY_IMAGE_DIR) + r"/([^/?#]+)$")
+_LEGACY_URL = re.compile(r"^/local/" + re.escape(LEGACY_IMAGE_DIR) + r"/([^/?#\s]+)$")
 
 
 def _relink(obj, renamed: dict[str, str] | None = None):

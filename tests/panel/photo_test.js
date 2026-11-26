@@ -18,8 +18,11 @@ window.HTMLElement.prototype.scrollIntoView = function () { };
 window.HTMLCanvasElement.prototype.getContext = () => null;
 const DIR = _FR + _path.sep;
 window.eval(fs.readFileSync(DIR + fs.readdirSync(DIR).filter(f => f.endsWith('.js'))[0], 'utf8'));
+const imzalar = [];
 const hass = { states: D.states, entities: {}, areas: {}, devices: {},
   auth: { data: { access_token: 't' } },
+  // Yüklenen fotoğraflar imzalı adresle gösterilir (auth/sign_path).
+  callWS: (m) => { imzalar.push(m); return Promise.resolve({ path: m.path + '?authSig=imza' }); },
   callApi: (m, u) => Promise.resolve(String(u).startsWith('history/period') ? []
     : u === 'lumen_ha/config' ? D.config_res : u === 'lumen_ha/state' ? D.state
       : u === 'lumen_ha/insight' ? { health: [], usage: { rooms: {}, series: {} }, notify_services: [] }
@@ -62,6 +65,12 @@ setTimeout(async () => {
   console.log('katman:', layer && layer.style.backgroundImage);
   if (!layer) problems.push('fotoğraf kartta görünmedi');
   else if (!/oda\.jpg/.test(layer.style.backgroundImage)) problems.push('yanlış görsel');
+  // 1.0.6'nın herkese açık /local/lumen/ adresi korumalı uca çevrilir ve
+  // imzalı yolla yüklenir: tarayıcı fotoğrafı oturumsuz alamaz.
+  else if (!/\/api\/lumen_ha\/image\/oda\.jpg\?authSig=imza/.test(layer.style.backgroundImage))
+    problems.push('fotoğraf imzalı korumalı adresten gelmedi: ' + layer.style.backgroundImage);
+  if (!imzalar.some(m => m.type === 'auth/sign_path' && m.path === '/api/lumen_ha/image/oda.jpg'))
+    problems.push('imza istenmedi');
   if (!kart().querySelector('.face.top.hasphoto')) problems.push('hasphoto sınıfı yok');
 
   // 4) tırnak/parantez içeren yol enjeksiyon yapamaz
